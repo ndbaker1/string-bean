@@ -1,0 +1,13 @@
+[package]
+name = "string-bean-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "string-bean"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.3.19", features = ["derive"] }
+image = "0.24.6"
+string-bean = { path = "../string-bean" } 

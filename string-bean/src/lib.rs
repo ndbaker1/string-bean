@@ -3,7 +3,8 @@ use std::{cmp::min, f64::consts::PI};
 type FPos = (f64, f64);
 type IPos = (usize, usize);
 
-#[derive(Default)]
+type Moves = Result<Vec<usize>, ()>;
+
 pub struct ThreadPlanner {
     num_chords: u64,
     chord_weight: f64,
@@ -65,15 +66,15 @@ impl ThreadPlanner {
     }
 
     /// Get the sequence of anchor moves to recreate the image using thread art
-    pub fn get_moves(&mut self, start_anchor: usize) -> Result<Vec<usize>, ()> {
+    pub fn get_moves(&mut self, start_anchor: usize) -> Moves {
         let mut anchor = start_anchor;
         let mut anchor_order = Vec::with_capacity(self.num_chords as usize);
 
         anchor_order.push(start_anchor);
 
         for _ in 0..self.num_chords {
+            #[cfg(not(feature = "wasm"))]
             let next_anchor = self.next_anchor(anchor).ok_or(())?;
-            eprintln!("{anchor} -> {next_anchor}");
 
             self.apply_line(self.anchors[anchor], self.anchors[next_anchor]);
 
@@ -190,12 +191,20 @@ mod test {
     /// simple case for line tracing in the image pixel grid to be the same in both directions.
     #[test]
     fn line_test() {
-        let mut planner = ThreadPlanner::default();
-        planner.image_width = 10;
-        planner.image_height = 10;
-
         let p1 = (2.0, 5.0);
         let p2 = (6.0, 8.0);
+
+        let planner = ThreadPlanner::new(
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            10,
+            10,
+            Default::default(),
+        );
 
         let actual_line = planner.grid_raytrace(p1, p2);
         let mut expected_line = vec![
