@@ -1,5 +1,6 @@
 <script>
 	import './styles.css';
+	import '../app.css';
 	import 'daisyui/dist/full.css';
 </script>
 

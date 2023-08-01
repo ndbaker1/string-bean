@@ -1,9 +1,12 @@
 // tailwind.config.js
 module.exports = {
     mode: 'jit',
-    purge: ['./src/**/*.svelte'],
+    content: ['./src/**/*.{html,js,svelte,ts}'],
     darkMode: false, // or 'media' or 'class'
     theme: {},
+    daisyui: {
+        themes: ["dark"],
+    },
     variants: {},
     plugins: [require('daisyui')],
 };
