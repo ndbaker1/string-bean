@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::Write;
+use std::path::Path;
 
 use clap::Parser;
 
@@ -69,7 +70,7 @@ fn write_svg(args: &CliArgs, anchors: &[usize]) -> Result<(), std::io::Error> {
     let radius = x_mid.min(y_mid);
     let degrees_per_anchor: f64 = 2.0 * std::f64::consts::PI / args.anchor_count as f64;
 
-    let mut svg_file = File::create(&args.output_file)?;
+    let mut svg_file = File::create(&Path::new(&args.output_file).with_extension("svg"))?;
 
     writeln!(
         svg_file,
