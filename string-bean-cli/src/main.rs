@@ -41,7 +41,7 @@ fn main() -> Result<(), std::io::Error> {
         .map(|angle| {
             (
                 x_mid as f64 + radius * angle.cos(),
-                y_mid as f64 * radius * angle.sin(),
+                y_mid as f64 + radius * angle.sin(),
             )
         })
         .collect();

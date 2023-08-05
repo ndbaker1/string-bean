@@ -109,7 +109,7 @@ where
     /// Apply changes from a line, persisting the pixel changes to the image
     fn apply_line(&mut self, src: FPos, dst: FPos) {
         for ((x, y), intensity) in self.trace_line(src, dst) {
-            self.image_mask_inverted[x + y * self.image_height] -= self.line_weight;
+            self.image_mask_inverted[x + y * self.image_height] -= intensity * self.line_weight;
         }
     }
 
@@ -126,7 +126,7 @@ where
         let line_penalty: Precision = line
             .into_iter()
             .map(|((x, y), intensity)| {
-                self.image_mask_inverted[x + y * self.image_height] - self.line_weight
+                self.image_mask_inverted[x + y * self.image_height] - intensity * self.line_weight
             })
             .map(|p| match p < 0.0 {
                 true => -self.lightness_penalty * p,

@@ -11,4 +11,3 @@ path = "src/main.rs"
 clap = { version = "4.3.19", features = ["derive"] }
 image = "0.24.6"
 string-bean = { path = "../string-bean" }
-line_drawing = "1.0.0"

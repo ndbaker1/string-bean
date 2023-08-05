@@ -1,7 +1,5 @@
 use wasm_bindgen::{prelude::wasm_bindgen, JsValue};
 
-use line_drawing::XiaolinWu;
-
 #[wasm_bindgen]
 pub fn plan_as_json(
     line_count: u32,
@@ -15,12 +13,15 @@ pub fn plan_as_json(
     image_buffer: &[u8],
     start_anchor: usize,
 ) -> JsValue {
+    let (x_mid, y_mid) = (width / 2, height / 2);
+    let radius = radius.min(x_mid.min(y_mid)) as f64;
+
     let anchors: Vec<_> = (0..anchor_count)
         .map(|anchor| anchor as f64 * 2.0 * std::f64::consts::PI / anchor_count as f64)
         .map(|angle| {
             (
-                radius as f64 * (1.0 + angle.cos()),
-                radius as f64 * (1.0 + angle.sin()),
+                x_mid as f64 + radius * angle.cos(),
+                y_mid as f64 + radius * angle.sin(),
             )
         })
         .collect();
@@ -49,6 +50,7 @@ pub fn plan_as_json(
             .join(","),
     ))
 }
+
 /// https://playtechs.blogspot.com/2007/03/raytracing-on-grid.html
 fn grid_raytrace(
     x0: f64,
