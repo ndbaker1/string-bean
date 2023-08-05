@@ -2,31 +2,28 @@ use std::fs::File;
 use std::io::Write;
 
 use clap::Parser;
-use image;
-
-use string_bean;
 
 #[derive(Parser)]
 struct CliArgs {
     input_file: String,
     output_file: String,
     #[clap(short = 'c', default_value_t = 500)]
-    num_chords: u64,
+    line_count: usize,
     #[clap(short = 'o', default_value_t = 0.2)]
     line_opacity: f64,
     #[arg(short = 'a', default_value_t = 288)]
-    num_anchors: u64,
+    anchor_count: u64,
     #[arg(short = 'g', default_value_t = 0)]
-    num_anchor_gap: usize,
+    anchor_gap_count: usize,
     #[arg(short = 'r', default_value_t = usize::MAX)]
     radius: usize,
     #[arg(short = 'p', default_value_t = 5.0)]
     penalty: f64,
 
-    #[arg(short = 'w', default_value_t = 850)]
-    output_width: u64,
-    #[arg(short = 'h', default_value_t = 850)]
-    output_height: u64,
+    #[arg(default_value_t = 850)]
+    width: u64,
+    #[arg(default_value_t = 850)]
+    height: u64,
 }
 
 fn main() -> Result<(), std::io::Error> {
@@ -36,39 +33,48 @@ fn main() -> Result<(), std::io::Error> {
     let width = img.width() as usize;
     let height = img.height() as usize;
 
+    let (x_mid, y_mid) = (width / 2, height / 2);
+    let radius = args.radius.min(x_mid.min(y_mid)) as f64;
+
+    let anchors: Vec<_> = (0..args.anchor_count)
+        .map(|anchor| anchor as f64 * 2.0 * std::f64::consts::PI / args.anchor_count as f64)
+        .map(|angle| {
+            (
+                x_mid as f64 + radius * angle.cos(),
+                y_mid as f64 * radius * angle.sin(),
+            )
+        })
+        .collect();
+
     let mut planner = string_bean::ThreadPlanner::new(
-        args.num_chords,
         args.line_opacity,
-        args.num_anchors,
-        args.num_anchor_gap,
-        args.radius,
+        &anchors,
+        args.anchor_gap_count,
         args.penalty,
+        grid_raytrace,
         width,
         height,
-        &mut img.into_vec(),
+        &img.into_vec(),
     );
 
-    let anchors = planner.get_moves(0).unwrap();
+    let anchors = planner.get_moves(0, args.line_count).unwrap();
 
     write_svg(&args, &anchors)?;
 
     Ok(())
 }
 
-fn write_svg(args: &CliArgs, anchors: &Vec<usize>) -> Result<(), std::io::Error> {
-    let (x_mid, y_mid) = (
-        args.output_width as f64 / 2.0,
-        args.output_height as f64 / 2.0,
-    );
+fn write_svg(args: &CliArgs, anchors: &[usize]) -> Result<(), std::io::Error> {
+    let (x_mid, y_mid) = (args.width as f64 / 2.0, args.height as f64 / 2.0);
     let radius = x_mid.min(y_mid);
-    let degrees_per_anchor: f64 = 2.0 * std::f64::consts::PI / args.num_anchors as f64;
+    let degrees_per_anchor: f64 = 2.0 * std::f64::consts::PI / args.anchor_count as f64;
 
     let mut svg_file = File::create(&args.output_file)?;
 
-    write!(
+    writeln!(
         svg_file,
-        "<svg width=\"{}\" height=\"{}\" xmlns=\"http://www.w3.org/2000/svg\">\n",
-        args.output_width, args.output_height
+        "<svg width=\"{}\" height=\"{}\" xmlns=\"http://www.w3.org/2000/svg\">",
+        args.width, args.height
     )?;
 
     for anchor_pairs in anchors.windows(2) {
@@ -79,14 +85,52 @@ fn write_svg(args: &CliArgs, anchors: &Vec<usize>) -> Result<(), std::io::Error>
         );
         let (x0, y0) = (x_mid + radius * deg1.cos(), y_mid + radius * deg1.sin());
         let (x1, y1) = (x_mid + radius * deg2.cos(), y_mid + radius * deg2.sin());
-        write!(
+        writeln!(
             svg_file,
-            "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" opacity=\"{}\" style=\"stroke:rgb(0,0,0); stroke-width:1\" />\n",
+            "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" opacity=\"{}\" style=\"stroke:rgb(0,0,0); stroke-width:1\" />",
             x0, y0, x1, y1, args.line_opacity
         )?;
     }
 
-    write!(svg_file, "</svg>")?;
+    writeln!(svg_file, "</svg>")?;
 
     Ok(())
+}
+
+/// https://playtechs.blogspot.com/2007/03/raytracing-on-grid.html
+fn grid_raytrace(
+    x0: f64,
+    y0: f64,
+    x1: f64,
+    y1: f64,
+) -> impl Iterator<Item = ((usize, usize), f64)> {
+    let (x0, y0) = (x0 as i64, y0 as i64);
+    let (x1, y1) = (x1 as i64, y1 as i64);
+
+    let mut dx = (x1 - x0).abs();
+    let mut dy = (y1 - y0).abs();
+    let mut x = x0;
+    let mut y = y0;
+
+    let n = 1 + dx + dy;
+    let x_inc = (x1 - x0).signum();
+    let y_inc = (y1 - y0).signum();
+
+    let mut error = dx - dy;
+    dx *= 2;
+    dy *= 2;
+
+    (0..n).map(move |_| {
+        let point = ((x as usize, y as usize), 1.0);
+
+        if error > 0 {
+            x += x_inc;
+            error -= dy;
+        } else {
+            y += y_inc;
+            error += dx;
+        }
+
+        point
+    })
 }

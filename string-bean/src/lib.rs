@@ -1,79 +1,82 @@
-use std::{cmp::min, f64::consts::PI};
-
-type FPos = (f64, f64);
+type Precision = f64;
+type FPos = (Precision, Precision);
 type IPos = (usize, usize);
+type PixelIntensity = (IPos, Precision);
 
-type Moves = Result<Vec<usize>, ()>;
-
-pub struct ThreadPlanner {
-    num_chords: u64,
-    chord_weight: f64,
-    num_anchor_gap: usize,
-    anchors: Vec<FPos>,
+/// Obtain a set of anchor moves for a thread art image using a custom configuration
+pub struct ThreadPlanner<'a, I, S>
+where
+    I: IntoIterator<Item = PixelIntensity>,
+    S: Fn(Precision, Precision, Precision, Precision) -> I,
+{
+    /// weight of line as pixel opacity between 0 and 1
+    line_weight: Precision,
+    /// set of anchor coordinates to use when drawing lines
+    anchors: &'a [FPos],
+    /// minimum number of anchors to branch out on the right and left each planning step
+    anchor_gap_count: usize,
+    /// weighting factor for negative penalties during planning
+    lightness_penalty: Precision,
+    /// line drawing algorithm returning a collection of
+    /// pixel-intensity pairs that can be turned into an iterator
+    line_algorithm: S,
     image_width: usize,
     image_height: usize,
-    inverted_mask: Vec<f64>,
-    /// parameter to adjust for weight that negative penalties
-    /// contribute to the overall penalty score.
-    lightness_penalty: f64,
+    /// inverted grayscale image mask used to compute pentalties and
+    /// persist pixel changes during thread planning
+    image_mask_inverted: Vec<Precision>,
 }
 
-impl ThreadPlanner {
+impl<'a, I, S> ThreadPlanner<'a, I, S>
+where
+    I: IntoIterator<Item = PixelIntensity>,
+    S: Fn(Precision, Precision, Precision, Precision) -> I,
+{
     pub fn new(
-        num_chords: u64,
-        chord_weight: f64,
-        num_anchors: u64,
-        num_anchor_gap: usize,
-        radius: usize,
-        penalty: f64,
+        line_weight: Precision,
+        anchors: &'a [FPos],
+        anchor_gap_count: usize,
+        lightness_penalty: Precision,
+        line_algorithm: S,
         image_width: usize,
         image_height: usize,
         image_mask: &[u8],
     ) -> Self {
-        let (x_mid, y_mid) = (image_width / 2, image_height / 2);
-        // radius is the smallest value that fits in the image space
-        let radius = min(radius, min(x_mid, y_mid)) as f64;
+        assert!(
+            (0.0..1.0).contains(&line_weight),
+            "line weight needs to be in the range [0,1]"
+        );
+        // convert line weight into the normalized u8 pixel range
+        let line_weight: Precision = u8::MAX as Precision * line_weight;
 
-        let anchors = (0..num_anchors)
-            .map(|anchor| anchor as f64 * 2.0 * PI / num_anchors as f64)
-            .map(|angle| {
-                (
-                    x_mid as f64 + radius * angle.cos(),
-                    y_mid as f64 + radius * angle.sin(),
-                )
-            })
-            .collect();
-
-        assert!(chord_weight <= 1.0 && chord_weight >= -1.0);
-
-        let chord_weight = u8::MAX as f64 * chord_weight;
-        let image_mask: Vec<_> = image_mask
+        let image_mask_inverted: Vec<_> = image_mask
             .iter()
             .map(|v| u8::MAX - v)
-            .map(|v| v as f64)
+            .map(|v| v as Precision)
             .collect();
 
+        // TODO: either trust the user or perform a runtime check that the points form a convex polygon
+
         Self {
-            num_chords,
-            chord_weight,
-            num_anchor_gap,
+            line_weight,
+            anchor_gap_count,
             anchors,
             image_width,
             image_height,
-            inverted_mask: image_mask,
-            lightness_penalty: penalty,
+            image_mask_inverted,
+            lightness_penalty,
+            line_algorithm,
         }
     }
 
     /// Get the sequence of anchor moves to recreate the image using thread art
-    pub fn get_moves(&mut self, start_anchor: usize) -> Moves {
+    pub fn get_moves(&mut self, start_anchor: usize, line_count: usize) -> Result<Vec<usize>, ()> {
         let mut anchor = start_anchor;
-        let mut anchor_order = Vec::with_capacity(self.num_chords as usize);
+        let mut anchor_order = Vec::with_capacity(line_count);
 
         anchor_order.push(start_anchor);
 
-        for _ in 0..self.num_chords {
-            #[cfg(not(feature = "wasm"))]
+        for _ in 0..line_count {
             let next_anchor = self.next_anchor(anchor).ok_or(())?;
 
             self.apply_line(self.anchors[anchor], self.anchors[next_anchor]);
@@ -89,14 +92,14 @@ impl ThreadPlanner {
     fn next_anchor(&self, current: usize) -> Option<usize> {
         // basically ignore `self.num_anchor_gap` on both sides of the anchor while
         // searching the remaining anchor search space
-        let search_size = self.anchors.len() - 2 * self.num_anchor_gap - 1;
+        let search_size = self.anchors.len() - 2 * self.anchor_gap_count - 1;
 
         (0..search_size)
-            .map(|i| (current + i + self.num_anchor_gap + 1).rem_euclid(self.anchors.len()))
+            .map(|i| (current + i + self.anchor_gap_count + 1).rem_euclid(self.anchors.len()))
             .map(|next| {
                 (
                     next,
-                    self.line_penalty(self.anchors[current], self.anchors[next]),
+                    self.penalty(self.anchors[current], self.anchors[next]),
                 )
             })
             .min_by(|x, y| x.1.total_cmp(&y.1))
@@ -105,23 +108,26 @@ impl ThreadPlanner {
 
     /// Apply changes from a line, persisting the pixel changes to the image
     fn apply_line(&mut self, src: FPos, dst: FPos) {
-        for (x, y) in self.grid_raytrace(src, dst) {
-            self.inverted_mask[x + y * self.image_height] -= self.chord_weight;
+        for ((x, y), intensity) in self.trace_line(src, dst) {
+            self.image_mask_inverted[x + y * self.image_height] -= self.line_weight;
         }
     }
 
     /// Compute the penalty for a line on the image.
     /// Penalty is weighted based on an average for each pixel touched by the line.
-    fn line_penalty(&self, src: FPos, dst: FPos) -> f64 {
-        let line = self.grid_raytrace(src, dst);
+    fn penalty(&self, src: FPos, dst: FPos) -> Precision {
+        let line = self.trace_line(src, dst);
 
         if line.is_empty() {
-            return f64::NEG_INFINITY;
+            return Precision::NEG_INFINITY;
         }
 
-        let total_penalty: f64 = line
-            .iter()
-            .map(|(x, y)| self.inverted_mask[x + y * self.image_height] - self.chord_weight)
+        let line_length: Precision = line.len() as _;
+        let line_penalty: Precision = line
+            .into_iter()
+            .map(|((x, y), intensity)| {
+                self.image_mask_inverted[x + y * self.image_height] - self.line_weight
+            })
             .map(|p| match p < 0.0 {
                 true => -self.lightness_penalty * p,
                 false => p,
@@ -129,13 +135,31 @@ impl ThreadPlanner {
             .sum();
 
         // return the average penalty for each point in the line
-        total_penalty / line.len() as f64
+        line_penalty / line_length
     }
 
+    /// Gets line from source to destination with additional bounds checks
+    fn trace_line(&self, src: FPos, dst: FPos) -> Vec<PixelIntensity> {
+        (self.line_algorithm)(src.0, src.1, dst.0, dst.1)
+            .into_iter()
+            .filter(|((x, y), _)| *x < self.image_width && *y < self.image_height)
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
     /// https://playtechs.blogspot.com/2007/03/raytracing-on-grid.html
-    fn grid_raytrace(&self, src: FPos, dst: FPos) -> Vec<IPos> {
-        let (x0, y0) = (src.0 as i64, src.1 as i64);
-        let (x1, y1) = (dst.0 as i64, dst.1 as i64);
+    fn grid_raytrace(
+        x0: Precision,
+        y0: Precision,
+        x1: Precision,
+        y1: Precision,
+    ) -> impl Iterator<Item = PixelIntensity> {
+        let (x0, y0) = (x0 as i64, y0 as i64);
+        let (x1, y1) = (x1 as i64, y1 as i64);
 
         let mut dx = (x1 - x0).abs();
         let mut dy = (y1 - y0).abs();
@@ -150,39 +174,51 @@ impl ThreadPlanner {
         dx *= 2;
         dy *= 2;
 
-        (0..n)
-            .map(|_| {
-                let point = (x as usize, y as usize);
+        (0..n).map(move |_| {
+            let point = ((x as usize, y as usize), 1.0);
 
-                if error > 0 {
-                    x += x_inc;
-                    error -= dy;
-                } else {
-                    y += y_inc;
-                    error += dx;
-                }
+            if error > 0 {
+                x += x_inc;
+                error -= dy;
+            } else {
+                y += y_inc;
+                error += dx;
+            }
 
-                point
-            })
-            .filter(|(x, y)| *x < self.image_width && *y < self.image_height)
-            .collect()
+            point
+        })
     }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
 
     /// test use case for the ThreadPlanner
     #[test]
     fn main_test() {
-        let width = 200;
-        let height = 200;
-        let mut image_mask = vec![0; width * height];
-        let mut planner =
-            ThreadPlanner::new(20, 0.5, 360, 10, 100, 1.0, width, height, &mut image_mask);
+        const RADIUS: usize = 200;
 
-        let anchors = planner.get_moves(0).unwrap();
+        const NUM_ANCHORS: usize = 100;
+        let anchors: Vec<_> = (0..NUM_ANCHORS)
+            .map(|anchor| {
+                anchor as Precision * 2.0 * std::f64::consts::PI / NUM_ANCHORS as Precision
+            })
+            .map(|angle| {
+                (
+                    RADIUS as Precision * (1.0 + angle.cos()),
+                    RADIUS as Precision * (1.0 + angle.sin()),
+                )
+            })
+            .collect();
+
+        let mut planner = ThreadPlanner::new(
+            0.5,
+            &anchors,
+            10,
+            1.0,
+            grid_raytrace,
+            RADIUS,
+            RADIUS,
+            &vec![0; RADIUS * RADIUS],
+        );
+
+        let anchors = planner.get_moves(0, 20).unwrap();
         for anchor in anchors {
             println!("{}", anchor);
         }
@@ -199,28 +235,27 @@ mod test {
             Default::default(),
             Default::default(),
             Default::default(),
-            Default::default(),
-            Default::default(),
+            grid_raytrace,
             10,
             10,
             Default::default(),
         );
 
-        let actual_line = planner.grid_raytrace(p1, p2);
+        let actual_line = planner.trace_line(p1, p2);
         let mut expected_line = vec![
-            (2, 5),
-            (3, 5),
-            (3, 6),
-            (4, 6),
-            (4, 7),
-            (5, 7),
-            (5, 8),
-            (6, 8),
+            ((2, 5), 1.0),
+            ((3, 5), 1.0),
+            ((3, 6), 1.0),
+            ((4, 6), 1.0),
+            ((4, 7), 1.0),
+            ((5, 7), 1.0),
+            ((5, 8), 1.0),
+            ((6, 8), 1.0),
         ];
 
         assert_eq!(expected_line, actual_line);
 
-        let actual_line = planner.grid_raytrace(p2, p1);
+        let actual_line = planner.trace_line(p2, p1);
         expected_line.reverse();
 
         assert_eq!(expected_line, actual_line);

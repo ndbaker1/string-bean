@@ -1,11 +1,13 @@
 use wasm_bindgen::{prelude::wasm_bindgen, JsValue};
 
+use line_drawing::XiaolinWu;
+
 #[wasm_bindgen]
 pub fn plan_as_json(
-    num_chords: u32,
+    line_count: u32,
     line_opacity: f32,
-    num_anchors: u32,
-    num_anchors_gap: usize,
+    anchor_count: u32,
+    anchor_gap_count: usize,
     radius: usize,
     penalty: f32,
     width: usize,
@@ -13,19 +15,30 @@ pub fn plan_as_json(
     image_buffer: &[u8],
     start_anchor: usize,
 ) -> JsValue {
+    let anchors: Vec<_> = (0..anchor_count)
+        .map(|anchor| anchor as f64 * 2.0 * std::f64::consts::PI / anchor_count as f64)
+        .map(|angle| {
+            (
+                radius as f64 * (1.0 + angle.cos()),
+                radius as f64 * (1.0 + angle.sin()),
+            )
+        })
+        .collect();
+
     let mut planner = string_bean::ThreadPlanner::new(
-        num_chords as _,
         line_opacity as _,
-        num_anchors as _,
-        num_anchors_gap as _,
-        radius,
+        &anchors,
+        anchor_gap_count,
         penalty as _,
+        grid_raytrace,
         width,
         height,
         image_buffer,
     );
 
-    let moves = planner.get_moves(start_anchor).unwrap_or(Vec::new());
+    let moves = planner
+        .get_moves(start_anchor, line_count as _)
+        .unwrap_or(Vec::new());
 
     JsValue::from_str(&format!(
         "[{}]",
@@ -35,4 +48,41 @@ pub fn plan_as_json(
             .collect::<Vec<_>>()
             .join(","),
     ))
+}
+/// https://playtechs.blogspot.com/2007/03/raytracing-on-grid.html
+fn grid_raytrace(
+    x0: f64,
+    y0: f64,
+    x1: f64,
+    y1: f64,
+) -> impl Iterator<Item = ((usize, usize), f64)> {
+    let (x0, y0) = (x0 as i64, y0 as i64);
+    let (x1, y1) = (x1 as i64, y1 as i64);
+
+    let mut dx = (x1 - x0).abs();
+    let mut dy = (y1 - y0).abs();
+    let mut x = x0;
+    let mut y = y0;
+
+    let n = 1 + dx + dy;
+    let x_inc = (x1 - x0).signum();
+    let y_inc = (y1 - y0).signum();
+
+    let mut error = dx - dy;
+    dx *= 2;
+    dy *= 2;
+
+    (0..n).map(move |_| {
+        let point = ((x as usize, y as usize), 1.0);
+
+        if error > 0 {
+            x += x_inc;
+            error -= dy;
+        } else {
+            y += y_inc;
+            error += dx;
+        }
+
+        point
+    })
 }
