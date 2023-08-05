@@ -36,6 +36,7 @@ jobs:
           curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
           wasm-pack build string-bean-wasm --target web 
       - name: Build Web
+        run: |
           cd web
           npm i && npm run build
           touch build/.nojekyll
