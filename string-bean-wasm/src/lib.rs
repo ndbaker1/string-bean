@@ -1,7 +1,9 @@
 use wasm_bindgen::{prelude::wasm_bindgen, JsValue};
 
+type ReturnArray = js_sys::Array;
+
 #[wasm_bindgen]
-pub fn plan_as_json(
+pub fn json_plan_circle(
     line_count: u32,
     line_opacity: f32,
     anchor_count: u32,
@@ -12,7 +14,7 @@ pub fn plan_as_json(
     height: usize,
     image_buffer: &[u8],
     start_anchor: usize,
-) -> JsValue {
+) -> ReturnArray {
     let (x_mid, y_mid) = (width / 2, height / 2);
     let radius = radius.min(x_mid.min(y_mid)) as f64;
 
@@ -37,18 +39,48 @@ pub fn plan_as_json(
         image_buffer,
     );
 
-    let moves = planner
+    planner
         .get_moves(start_anchor, line_count as _)
-        .unwrap_or(Vec::new());
+        .unwrap_or(Vec::new())
+        .into_iter()
+        .map(JsValue::from)
+        .collect()
+}
 
-    JsValue::from_str(&format!(
-        "[{}]",
-        moves
-            .iter()
-            .map(usize::to_string)
-            .collect::<Vec<_>>()
-            .join(","),
-    ))
+#[wasm_bindgen]
+pub fn json_plan(
+    line_count: u32,
+    line_opacity: f32,
+    anchor_list: &[f64],
+    anchor_gap_count: usize,
+    penalty: f32,
+    width: usize,
+    height: usize,
+    image_buffer: &[u8],
+    start_anchor: usize,
+) -> ReturnArray {
+    let anchors = anchor_list
+        .chunks_exact(2)
+        .map(|chunk| (chunk[0], chunk[1]))
+        .collect::<Vec<_>>();
+
+    let mut planner = string_bean::ThreadPlanner::new(
+        line_opacity as _,
+        &anchors,
+        anchor_gap_count,
+        penalty as _,
+        grid_raytrace,
+        width,
+        height,
+        image_buffer,
+    );
+
+    planner
+        .get_moves(start_anchor, line_count as _)
+        .unwrap_or(Vec::new())
+        .into_iter()
+        .map(JsValue::from)
+        .collect()
 }
 
 /// https://playtechs.blogspot.com/2007/03/raytracing-on-grid.html

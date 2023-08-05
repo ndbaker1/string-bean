@@ -648,6 +648,7 @@ dependencies = [
 name = "string-bean-wasm"
 version = "0.1.0"
 dependencies = [
+ "js-sys",
  "string-bean",
  "wasm-bindgen",
 ]
