@@ -1,6 +1,8 @@
 import adapter from '@sveltejs/adapter-static';
 import { vitePreprocess } from '@sveltejs/kit/vite';
 
+const base = process.env.BASE_HREF ?? '';
+
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
 	kit: {
@@ -11,9 +13,13 @@ const config = {
 			pages: 'build',
 			assets: 'build',
 			precompress: false,
-			strict: true
-		})
+			strict: true,
+		}),
+		paths: {
+			base
+		}
 	},
+
 	preprocess: vitePreprocess(),
 };
 
