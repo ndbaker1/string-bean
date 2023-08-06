@@ -47,6 +47,8 @@
 				return circle_anchors(num_anchors, width, height, Math.min(width, height) / 2);
 			case SHAPES.RECTANGLE:
 				return rectangle_anchors(num_anchors, width, height);
+			default:
+				return circle_anchors(num_anchors, width, height, Math.min(width, height) / 2);
 		}
 	}
 
@@ -188,7 +190,7 @@
 {#if state == STATES.UPLOAD}
 	<div class="w-screen h-screen flex p-4">
 		<div class="m-auto flex flex-col">
-			<h1 class="title">string-bean</h1>
+			<h1 class="title text-5xl pb-10">🧵string-bean</h1>
 			<div class="flex">
 				<label for="upload-button" class="btn btn-outline btn-success m-auto">
 					<span> Upload Image </span>
@@ -304,16 +306,16 @@
 				</div>
 			</div>
 		</div>
+
+		<h1 class="title">🧵string-bean</h1>
 	</div>
 {/if}
 
 <style>
 	.title {
-		font-size: 3rem;
 		font-weight: bolder;
-		background: -webkit-linear-gradient(#25af75, #51ffbc);
+		background: -webkit-linear-gradient(#5fffc2, #0e5839);
 		background-clip: text;
 		-webkit-text-fill-color: transparent;
-		padding-bottom: 1rem;
 	}
 </style>

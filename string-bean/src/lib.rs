@@ -143,6 +143,7 @@ where
         (self.line_algorithm)(src.0, src.1, dst.0, dst.1)
             .into_iter()
             .filter(|((x, y), _)| *x < self.image_width && *y < self.image_height)
+            .filter(|((x, y), _)| *x + *y * self.image_height < self.image_mask_inverted.len())
             .collect()
     }
 }
