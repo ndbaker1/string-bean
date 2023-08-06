@@ -24,9 +24,9 @@
 	 */
 	let line_count = 500;
 	let line_opacity = 0.2;
-	let num_anchors = 188;
-	let num_anchor_gap = 0;
-	let penalty = 100;
+	let num_anchors = 200;
+	let num_anchor_gap = 10;
+	let penalty = 500;
 	let start_anchor = 0;
 
 	$: num_anchor_gap = Math.min(num_anchor_gap, num_anchors / 2 - 1);
@@ -70,9 +70,10 @@
 	}
 
 	function draw() {
+		const isPortrait = windowRatio > 1;
 		const maxSize = Math.max(
 			250,
-			(windowRatio > 1 ? window.innerHeight / 3 : window.innerWidth / 3) - 100
+			(isPortrait ? window.innerHeight / 3 : window.innerWidth / 3) - 100
 		);
 
 		const imageRatio = imageSource.height / imageSource.width;
@@ -85,7 +86,7 @@
 
 		/** @type CanvasRenderingContext2D  */
 		// @ts-ignore
-		const imagePreviewCtx = imagePreview.getContext('2d');
+		const imagePreviewCtx = imagePreview.getContext('2d', { willReadFrequently: true });
 		imagePreviewCtx.clearRect(0, 0, width, height);
 		imagePreviewCtx.drawImage(imageSource, 0, 0, width, height);
 
@@ -144,6 +145,17 @@
 		await init();
 		windowRatio = window.innerHeight / window.innerWidth;
 	});
+
+	/**
+	 * @param {Event & { currentTarget: EventTarget & HTMLInputElement }} e
+	 */
+	async function upload(e) {
+		if (e.currentTarget.files) {
+			await imageUpload(e.currentTarget.files[0]);
+			draw();
+			state = STATES.CONFIGURE;
+		}
+	}
 </script>
 
 <svelte:head>
@@ -159,11 +171,11 @@
 			<canvas bind:this={imagePreview} />
 		</div>
 		<div class="join-item indicator">
-			<span class="indicator-item badge badge-primary">monochrome</span>
+			<span class="indicator-item badge badge-secondary">monochrome</span>
 			<canvas bind:this={imageMonochrome} />
 		</div>
 		<div class="join-item indicator">
-			<span class="indicator-item badge badge-secondary">output</span>
+			<span class="indicator-item badge badge-warning">output</span>
 			<canvas bind:this={imageDraw} />
 		</div>
 	</div>
@@ -175,55 +187,34 @@
 
 {#if state == STATES.UPLOAD}
 	<div class="w-screen h-screen flex p-4">
-		<label
-			class="m-auto px-10 py-4 flex transition border-2
-		border-gray-300 border-dashed rounded-lg
-		appearance-none cursor-pointer
-		hover:border-gray-400 focus:outline-none"
-		>
-			<span class="flex items-center space-x-2">
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					class="w-6 h-6 text-gray-200"
-					fill="none"
-					viewBox="0 0 24 24"
-					stroke="currentColor"
-					stroke-width="2"
-				>
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-					/>
-				</svg>
-				<span class="font-medium text-gray-400"> Upload an Image </span>
-			</span>
-			<input
-				type="file"
-				on:change={async (e) => {
-					if (e.currentTarget.files) {
-						await imageUpload(e.currentTarget.files[0]);
-						draw();
-						state = STATES.CONFIGURE;
-					}
-				}}
-				class="hidden"
-			/>
-		</label>
+		<div class="m-auto flex flex-col">
+			<h1 class="title">string-bean</h1>
+			<div class="flex">
+				<label for="upload-button" class="btn btn-outline btn-success m-auto">
+					<span> Upload Image </span>
+				</label>
+				<input id="upload-button" type="file" on:change={upload} class="hidden" />
+			</div>
+		</div>
 	</div>
 {:else if state == STATES.CONFIGURE}
-	<div class="flex flex-col px-8 gap-10 items-center">
+	<div class="flex flex-col p-8 gap-10 items-center">
 		<div class="join">
-			<button class="btn btn-info join-item" on:click={() => (state = STATES.UPLOAD)}>
-				Upload Another
+			<label class="join-item btn btn-outline btn-success m-auto" for="upload-button">
+				<span> Upload Another </span>
+			</label>
+			<input id="upload-button" type="file" on:change={upload} class="hidden" />
+			<button class="join-item btn btn-outline btn-primary" on:click={() => draw()}>
+				Redraw
 			</button>
-			<button class="btn btn-primary join-item" on:click={() => draw()}> Redraw </button>
 		</div>
 
 		<div>
-			<div class="grid max-w-3xl gap-5">
+			<div class="grid max-w-3xl gap-2">
 				<div class="flex gap-5 items-center">
-					<kbd class="kbd">Anchor Count</kbd>
+					<div class="badge badge-info">
+						<kbd class="whitespace-nowrap w-24 text-center">Anchor Count</kbd>
+					</div>
 					<input
 						type="range"
 						min="0"
@@ -236,12 +227,14 @@
 						min="0"
 						max="500"
 						bind:value={num_anchors}
-						class="input input-primary w-48"
+						class="input input-sm input-bordered w-48"
 					/>
 				</div>
 
 				<div class="flex gap-5 items-center">
-					<kbd class="kbd">Anchor Gaps</kbd>
+					<div class="badge badge-info">
+						<kbd class="whitespace-nowrap w-24 text-center">Anchor Gaps</kbd>
+					</div>
 					<input
 						type="range"
 						min="0"
@@ -254,12 +247,14 @@
 						min="0"
 						max={Math.round(num_anchors / 2) - 1}
 						bind:value={num_anchor_gap}
-						class="input input-primary w-48"
+						class="input input-sm input-bordered w-48"
 					/>
 				</div>
 
 				<div class="flex gap-5 items-center">
-					<kbd class="kbd">Chord Count</kbd>
+					<div class="badge badge-info">
+						<kbd class="whitespace-nowrap w-24 text-center">Line Count</kbd>
+					</div>
 					<input
 						type="range"
 						min="0"
@@ -272,12 +267,14 @@
 						min="0"
 						max="2000"
 						bind:value={line_count}
-						class="input input-primary w-48"
+						class="input input-sm input-bordered w-48"
 					/>
 				</div>
 
 				<div class="flex gap-5 items-center">
-					<kbd class="kbd">Line Opacity</kbd>
+					<div class="badge badge-info">
+						<kbd class="whitespace-nowrap w-24 text-center">Line Opacity</kbd>
+					</div>
 					<input
 						type="range"
 						min="0"
@@ -291,12 +288,14 @@
 						min="0"
 						max="1"
 						bind:value={line_opacity}
-						class="input input-primary w-48"
+						class="input input-sm input-bordered w-48"
 					/>
 				</div>
 
 				<div class="flex gap-5 items-center">
-					<kbd class="kbd">Shape</kbd>
+					<div class="badge badge-info">
+						<kbd class="whitespace-nowrap w-24 text-center"> Shape</kbd>
+					</div>
 					<select bind:value={shape} class="select select-bordered w-full max-w-xs">
 						{#each Object.values(SHAPES) as s}
 							<option>{s}</option>
@@ -308,4 +307,13 @@
 	</div>
 {/if}
 
-<footer class="p-5" />
+<style>
+	.title {
+		font-size: 3rem;
+		font-weight: bolder;
+		background: -webkit-linear-gradient(#25af75, #51ffbc);
+		background-clip: text;
+		-webkit-text-fill-color: transparent;
+		padding-bottom: 1rem;
+	}
+</style>

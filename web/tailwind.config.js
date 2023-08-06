@@ -5,7 +5,7 @@ module.exports = {
     darkMode: false, // or 'media' or 'class'
     theme: {},
     daisyui: {
-        themes: ["dark"],
+        themes: ["night"],
     },
     variants: {},
     plugins: [require('daisyui')],
