@@ -80,8 +80,9 @@
 
 		const imageRatio = imageSource.height / imageSource.width;
 
-		const width = imageRatio > 1 ? maxSize * imageRatio : maxSize;
-		const height = imageRatio > 1 ? maxSize : maxSize * imageRatio;
+		// TODO: make this use the smaller dimension as the clamp
+		const width = maxSize;
+		const height = maxSize * imageRatio;
 
 		imagePreview.width = imageMonochrome.width = imageDraw.width = width;
 		imagePreview.height = imageMonochrome.height = imageDraw.height = height;

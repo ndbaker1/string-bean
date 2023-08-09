@@ -4,6 +4,35 @@ type IPos = (usize, usize);
 type PixelIntensity = (IPos, Precision);
 
 /// Obtain a set of anchor moves for a thread art image using a custom configuration
+///
+/// # Examples
+///
+/// ```
+/// // create anchors to form any kind of convex polygon
+/// let anchors = [(0.0, 0.0), (1.0, 1.0), (0.0, 2.0)];
+/// // obtain image data and metadata
+/// let (width, height) = (10, 10);
+/// let image_mask = vec![255; width * height];
+/// // implement your own line algorithm, use an example from this crate (grid_raytacer),
+/// // or use something from https://docs.rs/line_drawing/latest/line_drawing/
+/// let line_algorithm = |x0, y0, x1, y1| [];
+/// // use the ThreadPlanner with configuration to create an instance
+/// // that can output any number of anchor stops and start from any anchor
+/// let mut planner = string_bean::ThreadPlanner::new(
+///     0.2,
+///     &anchors,
+///     0,
+///     1.0,
+///     line_algorithm,
+///     width,
+///     height,
+///     &image_mask
+/// );
+/// // compute any number of moves using a start anchor
+/// let start_anchor = 0;
+/// let line_count = 5;
+/// let anchors = planner.get_moves(start_anchor, line_count).unwrap();
+/// ```
 pub struct ThreadPlanner<'a, I, S>
 where
     I: IntoIterator<Item = PixelIntensity>,
@@ -32,6 +61,18 @@ where
     I: IntoIterator<Item = PixelIntensity>,
     S: Fn(Precision, Precision, Precision, Precision) -> I,
 {
+    /// Contructs a thread art planner
+    ///
+    /// * `line_weight` - weight of line as pixel opacity between 0 and 1
+    /// * `anchors` - a u8 slice to a set of float coordinate pairs making a convex polygon
+    /// * `anchor_gap_count` - number of space to leave between consecutive anchors
+    /// * `lightness_penalty` - penality weight of darkened pixels during computation
+    /// * `line_algorithm` - provided line drawing algorithm implementation, which
+    ///                      returns the set of points which best represent a line from
+    ///                      point A to point B
+    /// * `image_width` - width of the input image
+    /// * `image_height` - height of the input image
+    /// * `image_mask` - a u8 slice to the grayscale representation of the input image
     pub fn new(
         line_weight: Precision,
         anchors: &'a [FPos],
@@ -70,14 +111,20 @@ where
     }
 
     /// Get the sequence of anchor moves to recreate the image using thread art
-    pub fn get_moves(&mut self, start_anchor: usize, line_count: usize) -> Result<Vec<usize>, ()> {
+    pub fn get_moves(
+        &mut self,
+        start_anchor: usize,
+        line_count: usize,
+    ) -> Result<Vec<usize>, &str> {
         let mut anchor = start_anchor;
         let mut anchor_order = Vec::with_capacity(line_count);
 
         anchor_order.push(start_anchor);
 
         for _ in 0..line_count {
-            let next_anchor = self.next_anchor(anchor).ok_or(())?;
+            let next_anchor = self
+                .next_anchor(anchor)
+                .ok_or("failed to obtain next anchor.")?;
 
             self.apply_line(self.anchors[anchor], self.anchors[next_anchor]);
 
@@ -190,41 +237,6 @@ mod test {
         })
     }
 
-    /// test use case for the ThreadPlanner
-    #[test]
-    fn main_test() {
-        const RADIUS: usize = 200;
-
-        const NUM_ANCHORS: usize = 100;
-        let anchors: Vec<_> = (0..NUM_ANCHORS)
-            .map(|anchor| {
-                anchor as Precision * 2.0 * std::f64::consts::PI / NUM_ANCHORS as Precision
-            })
-            .map(|angle| {
-                (
-                    RADIUS as Precision * (1.0 + angle.cos()),
-                    RADIUS as Precision * (1.0 + angle.sin()),
-                )
-            })
-            .collect();
-
-        let mut planner = ThreadPlanner::new(
-            0.5,
-            &anchors,
-            10,
-            1.0,
-            grid_raytrace,
-            RADIUS,
-            RADIUS,
-            &vec![0; RADIUS * RADIUS],
-        );
-
-        let anchors = planner.get_moves(0, 20).unwrap();
-        for anchor in anchors {
-            println!("{}", anchor);
-        }
-    }
-
     /// simple case for line tracing in the image pixel grid to be the same in both directions.
     #[test]
     fn line_test() {
@@ -239,7 +251,7 @@ mod test {
             grid_raytrace,
             10,
             10,
-            Default::default(),
+            &[0; 100],
         );
 
         let actual_line = planner.trace_line(p1, p2);
