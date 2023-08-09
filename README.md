@@ -8,6 +8,7 @@
 1. Upload an image
 2. Preview the greyscale conversion from source image
 3. View thread anchor sequence drawn onto canvas
+4. Play with input parameters to change output
 
 #### Sample Output
 > drawn by me ◕_◕ 
