@@ -41,5 +41,5 @@ It currently supports:
 
 A recent youtube video about string art, [The Mathematics of String Art](https://youtu.be/WGccIFf6MF8), showed up in my recommended and was pretty interesting so i decided to try implementing it in 🦀 Rust.  
 
-There are also very few well documented projects for computation computational string/thread-art, so i figured i would try to make one that was easily accessible and avoided using libraries to do heavy lifting magic
+There are also very few well documented projects for computational string/thread-art, so i figured i would try to make one that was easily accessible and avoided using libraries to do heavy lifting magic
 
