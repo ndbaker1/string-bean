@@ -137,8 +137,7 @@ where
 
     /// Finds the next thread anchor on the perimeter based on the current
     fn next_anchor(&self, current: usize) -> Option<usize> {
-        // basically ignore `self.num_anchor_gap` on both sides of the anchor while
-        // searching the remaining anchor search space
+        //  search_size = `all anchors`      - `gap on both sides`       - `current anchor` 
         let search_size = self.anchors.len() - 2 * self.anchor_gap_count - 1;
 
         (0..search_size)
