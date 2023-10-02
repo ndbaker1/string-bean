@@ -3,6 +3,7 @@ use std::io::Write;
 use std::path::Path;
 
 use clap::Parser;
+use string_bean::PlanningStrategy;
 
 #[derive(Parser)]
 struct CliArgs {
@@ -58,7 +59,15 @@ fn main() -> Result<(), std::io::Error> {
         &img.into_vec(),
     );
 
-    let anchors = planner.get_moves(0, args.line_count).unwrap();
+    let anchors = planner
+        .get_moves(
+            0,
+            CountPlanner {
+                count: 0,
+                target: args.line_count,
+            },
+        )
+        .unwrap();
 
     write_svg(&args, &anchors)?;
 
@@ -79,7 +88,9 @@ fn write_svg(args: &CliArgs, anchors: &[usize]) -> Result<(), std::io::Error> {
     )?;
 
     for anchor_pairs in anchors.windows(2) {
-        let &[anchor1, anchor2] = anchor_pairs else { panic!("bad window size") };
+        let &[anchor1, anchor2] = anchor_pairs else {
+            panic!("bad window size")
+        };
         let (deg1, deg2) = (
             degrees_per_anchor * anchor1 as f64,
             degrees_per_anchor * anchor2 as f64,
@@ -134,4 +145,15 @@ fn grid_raytrace(
 
         point
     })
+}
+
+struct CountPlanner {
+    target: usize,
+    count: usize,
+}
+impl PlanningStrategy for CountPlanner {
+    fn completed(&mut self) -> bool {
+        self.count += 1;
+        self.count > self.target
+    }
 }

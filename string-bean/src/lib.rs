@@ -3,11 +3,17 @@ type FPos = (Precision, Precision);
 type IPos = (usize, usize);
 type PixelIntensity = (IPos, Precision);
 
+/// A strategy for determining when to terminate the thread planner
+pub trait PlanningStrategy {
+    fn completed(&mut self) -> bool;
+}
+
 /// Obtain a set of anchor moves for a thread art image using a custom configuration
 ///
 /// # Examples
 ///
 /// ```
+/// use string_bean::PlanningStrategy;
 /// // create anchors to form any kind of convex polygon
 /// let anchors = [(0.0, 0.0), (1.0, 1.0), (0.0, 2.0)];
 /// // obtain image data and metadata
@@ -28,10 +34,20 @@ type PixelIntensity = (IPos, Precision);
 ///     height,
 ///     &image_mask
 /// );
+/// // implement a strategy to run the planner for a set number of iterations
+/// struct CountPlanner {
+///     target: usize,
+///     count: usize,
+/// }
+/// impl PlanningStrategy for CountPlanner {
+///     fn completed(&mut self) -> bool {
+///         self.count += 1;
+///         self.count > self.target
+///     }
+/// }
 /// // compute any number of moves using a start anchor
 /// let start_anchor = 0;
-/// let line_count = 5;
-/// let anchors = planner.get_moves(start_anchor, line_count).unwrap();
+/// let anchors = planner.get_moves(start_anchor, CountPlanner { count: 0, target: 5 }).unwrap();
 /// ```
 pub struct ThreadPlanner<'a, I, S>
 where
@@ -64,8 +80,8 @@ where
     /// Contructs a thread art planner
     ///
     /// * `line_weight` - weight of line as pixel opacity between 0 and 1
-    /// * `anchors` - a u8 slice to a set of float coordinate pairs making a convex polygon
-    /// * `anchor_gap_count` - number of space to leave between consecutive anchors
+    /// * `anchors` - a slice to a set of float coordinate pairs making a convex polygon
+    /// * `anchor_gap_count` - number of spaces to leave between consecutive anchors
     /// * `lightness_penalty` - penality weight of darkened pixels during computation
     /// * `line_algorithm` - provided line drawing algorithm implementation, which
     ///                      returns the set of points which best represent a line from
@@ -111,17 +127,16 @@ where
     }
 
     /// Get the sequence of anchor moves to recreate the image using thread art
-    pub fn get_moves(
-        &mut self,
-        start_anchor: usize,
-        line_count: usize,
-    ) -> Result<Vec<usize>, &str> {
+    pub fn get_moves<P>(&mut self, start_anchor: usize, mut strategy: P) -> Result<Vec<usize>, &str>
+    where
+        P: PlanningStrategy,
+    {
         let mut anchor = start_anchor;
-        let mut anchor_order = Vec::with_capacity(line_count);
+        let mut anchor_order = Vec::new();
 
         anchor_order.push(start_anchor);
 
-        for _ in 0..line_count {
+        while !strategy.completed() {
             let next_anchor = self
                 .next_anchor(anchor)
                 .ok_or("failed to obtain next anchor.")?;
@@ -135,9 +150,9 @@ where
         Ok(anchor_order)
     }
 
-    /// Finds the next thread anchor on the perimeter based on the current
+    /// Finds the next thread anchor on the perimeter based on the position of current
     fn next_anchor(&self, current: usize) -> Option<usize> {
-        //  search_size = `all anchors`      - `gap on both sides`       - `current anchor` 
+        //  search_size = `all anchors`      - `gap on both sides`       - `current anchor`
         let search_size = self.anchors.len() - 2 * self.anchor_gap_count - 1;
 
         (0..search_size)
@@ -152,7 +167,7 @@ where
             .map(|(i, _)| i)
     }
 
-    /// Apply changes from a line, persisting the pixel changes to the image
+    /// Apply changes from a line, persisting the pixel changes to the image mask
     fn apply_line(&mut self, src: FPos, dst: FPos) {
         for ((x, y), intensity) in self.trace_line(src, dst) {
             self.image_mask_inverted[x + y * self.image_width] -= intensity * self.line_weight;

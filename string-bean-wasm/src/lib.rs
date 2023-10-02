@@ -1,3 +1,4 @@
+use string_bean::PlanningStrategy;
 use wasm_bindgen::{prelude::wasm_bindgen, JsValue};
 
 type ReturnArray = js_sys::Array;
@@ -40,7 +41,13 @@ pub fn json_plan_circle(
     );
 
     planner
-        .get_moves(start_anchor, line_count as _)
+        .get_moves(
+            start_anchor,
+            CountPlanner {
+                count: 0,
+                target: line_count,
+            },
+        )
         .unwrap_or(Vec::new())
         .into_iter()
         .map(JsValue::from)
@@ -76,11 +83,28 @@ pub fn json_plan(
     );
 
     planner
-        .get_moves(start_anchor, line_count as _)
+        .get_moves(
+            start_anchor,
+            CountPlanner {
+                count: 0,
+                target: line_count,
+            },
+        )
         .unwrap_or(Vec::new())
         .into_iter()
         .map(JsValue::from)
         .collect()
+}
+
+struct CountPlanner {
+    target: u32,
+    count: u32,
+}
+impl PlanningStrategy for CountPlanner {
+    fn completed(&mut self) -> bool {
+        self.count += 1;
+        self.count > self.target
+    }
 }
 
 /// https://playtechs.blogspot.com/2007/03/raytracing-on-grid.html
