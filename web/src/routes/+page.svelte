@@ -1,7 +1,7 @@
 <script>
 	import { onMount } from 'svelte';
 
-	import init, { json_plan } from 'string-bean';
+	import init, { planMoves } from 'string-bean';
 
 	import { circle_anchors } from '$lib/utils';
 	import { rectangle_anchors } from '../lib/utils';
@@ -111,7 +111,7 @@
 
 		const anchorCoords = getAnchors(width, height);
 
-		const moves = json_plan(
+		const moves = planMoves(
 			line_count,
 			line_opacity,
 			new Float64Array(anchorCoords.flat()),

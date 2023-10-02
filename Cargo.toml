@@ -1,7 +1,3 @@
 [workspace]
-members = [
-    "string-bean",
-    "string-bean-cli",
-    "string-bean-wasm",
-]
-
+resolver = "2"
+members = ["string-bean", "string-bean-cli", "string-bean-wasm"]

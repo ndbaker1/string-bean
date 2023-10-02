@@ -4,6 +4,8 @@ use std::path::Path;
 
 use clap::Parser;
 
+use string_bean::core::{grid_raytrace, CountTracker};
+
 #[derive(Parser)]
 struct CliArgs {
     input_file: String,
@@ -58,7 +60,9 @@ fn main() -> Result<(), std::io::Error> {
         &img.into_vec(),
     );
 
-    let anchors = planner.get_moves(0, args.line_count).unwrap();
+    let anchors = planner
+        .get_moves(0, CountTracker(args.line_count as u32))
+        .unwrap();
 
     write_svg(&args, &anchors)?;
 
@@ -79,7 +83,9 @@ fn write_svg(args: &CliArgs, anchors: &[usize]) -> Result<(), std::io::Error> {
     )?;
 
     for anchor_pairs in anchors.windows(2) {
-        let &[anchor1, anchor2] = anchor_pairs else { panic!("bad window size") };
+        let &[anchor1, anchor2] = anchor_pairs else {
+            panic!("bad window size")
+        };
         let (deg1, deg2) = (
             degrees_per_anchor * anchor1 as f64,
             degrees_per_anchor * anchor2 as f64,
@@ -96,42 +102,4 @@ fn write_svg(args: &CliArgs, anchors: &[usize]) -> Result<(), std::io::Error> {
     writeln!(svg_file, "</svg>")?;
 
     Ok(())
-}
-
-/// https://playtechs.blogspot.com/2007/03/raytracing-on-grid.html
-fn grid_raytrace(
-    x0: f64,
-    y0: f64,
-    x1: f64,
-    y1: f64,
-) -> impl Iterator<Item = ((usize, usize), f64)> {
-    let (x0, y0) = (x0 as i64, y0 as i64);
-    let (x1, y1) = (x1 as i64, y1 as i64);
-
-    let mut dx = (x1 - x0).abs();
-    let mut dy = (y1 - y0).abs();
-    let mut x = x0;
-    let mut y = y0;
-
-    let n = 1 + dx + dy;
-    let x_inc = (x1 - x0).signum();
-    let y_inc = (y1 - y0).signum();
-
-    let mut error = dx - dy;
-    dx *= 2;
-    dy *= 2;
-
-    (0..n).map(move |_| {
-        let point = ((x as usize, y as usize), 1.0);
-
-        if error > 0 {
-            x += x_inc;
-            error -= dy;
-        } else {
-            y += y_inc;
-            error += dx;
-        }
-
-        point
-    })
 }
